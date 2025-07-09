@@ -43,3 +43,29 @@ kubectl delete namespace argocd --ignore-not-found
 kubectl get all -n argocd
 kubectl get pvc -n argocd
 ```
+
+Para verificar que el servicio de ArgoCD está corriendo y accesible, puedes ejecutar:
+
+```bash
+kubectl get svc argocd-server -n argocd
+kubectl get pods -n argocd
+```
+
+
+## 🔑 Acceso a la UI de ArgoCD
+
+
+Para acceder a la interfaz de usuario de ArgoCD, puedes usar el siguiente comando para hacer un `port-forward`:
+
+```bash
+kubectl port-forward -n argocd svc/argocd-server 9090:443
+```
+
+Para obtener la contraseña inicial del usuario `admin`, puedes ejecutar:
+
+```bash
+kubectl -n argocd get secret argocd-initial-admin-secret \
+  -o jsonpath="{.data.password}" | base64 -d && echo
+```
+
+

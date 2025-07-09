@@ -8,6 +8,7 @@ VALUES_FILE="$HOME/projects/argocd-bootstrap_local_k3d/argocd-values.yaml"
 
 NODEPORT_HTTP=32080
 NODEPORT_HTTPS=32443
+LOCAL_PORT=9090  # Puerto fijo para port-forward
 
 # 1. Verificar si el release ya está instalado
 if helm status "$RELEASE" -n "$NAMESPACE" &>/dev/null; then
@@ -51,15 +52,18 @@ echo "✅ ArgoCD desplegado correctamente."
 cat <<EOF
 
 🌐 Acceso a ArgoCD UI:
-    http://localhost:$NODEPORT_HTTP
-    https://localhost:$NODEPORT_HTTPS
+    - NodePort:
+        http://localhost:$NODEPORT_HTTP
+        https://localhost:$NODEPORT_HTTPS
+
+    - Port-Forward (manual, si prefieres):
+        kubectl port-forward -n $NAMESPACE svc/$RELEASE $LOCAL_PORT:443
+        https://localhost:$LOCAL_PORT
 
 👤 Usuario: admin
 🔐 Contraseña: $PASSWORD
 
 📦 Namespace: $NAMESPACE
 🛡️  Helm release: $RELEASE
-
-(🔁 Usa Ctrl+C para cerrar port-forward si lo usas manualmente)
 
 EOF
