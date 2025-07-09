@@ -1,0 +1,9 @@
+server:
+  config:
+    url: https://localhost:32443
+  ingress:
+    enabled: false
+    annotations: {}
+    hosts: []
+    paths: []
+  extraArgs: []
