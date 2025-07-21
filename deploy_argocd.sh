@@ -1,8 +1,9 @@
 #!/usr/bin/env bash
 # ──────────────────────────────────────────────────────────────────────────────
-# deploy_argocd_render.sh
+# deploy_argocd.sh
 #   ▸ Despliega ArgoCD en K3d / K3s con Helm + configuración personalizada
 #   ▸ Asigna puertos fijos y muestra credenciales al finalizar
+#   ▸ Mantiene el port-forward persistente en segundo plano
 # ──────────────────────────────────────────────────────────────────────────────
 set -euo pipefail
 
@@ -13,11 +14,21 @@ CHART="argo/argo-cd"
 VALUES_FILE="$HOME/projects/argocd-bootstrap_local_k3d/argocd-values.yaml"
 NODEPORT_HTTP=32080
 NODEPORT_HTTPS=32443
-LOCAL_PORT=9090  # Para port-forward manual (opcional)
+LOCAL_PORT=9090  # Para port-forward persistente
 
 for bin in helm kubectl base64; do
   command -v "$bin" >/dev/null || { echo "❌ Falta $bin"; exit 1; }
 done
+
+# ═══ Función: port-forward persistente ════════════════════════════════════════
+keep_port_forward() {
+    pkill -f "kubectl .*port-forward.*svc/argocd-server" 2>/dev/null || true
+    while true; do
+        kubectl -n "$NAMESPACE" port-forward svc/argocd-server \
+        "$LOCAL_PORT:443" --address 0.0.0.0 >/dev/null 2>&1 || true
+        sleep 2
+    done &
+}
 
 # ═══ 1. LIMPIEZA PREVIA ══════════════════════════════════════════════════════
 if helm status "$RELEASE" -n "$NAMESPACE" &>/dev/null; then
@@ -54,13 +65,16 @@ kubectl rollout status deployment/argocd-server -n "$NAMESPACE" --timeout=5m
 PASSWORD=$(kubectl -n "$NAMESPACE" get secret argocd-initial-admin-secret \
   -o jsonpath="{.data.password}" | base64 -d)
 
+# ═══ 6. Iniciar port-forward persistente ═════════════════════════════════════
+echo "🔗 Iniciando port-forward persistente (https://localhost:$LOCAL_PORT)"
+keep_port_forward
+
 cat <<EOF
 
 ╭─────────────────────────────  ArgoCD Listo  ─────────────────────────────╮
 │ 🌐 URL NodePort HTTP : http://localhost:$NODEPORT_HTTP                   │
 │ 🌐 URL NodePort HTTPS: https://localhost:$NODEPORT_HTTPS                  │
-│ 🔗 Port-forward     : kubectl port-forward -n $NAMESPACE svc/$RELEASE \
-│                       $LOCAL_PORT:443                                    │
+│ 🔗 Port-forward     : https://localhost:$LOCAL_PORT (activo)              │
 │ 👤 Usuario admin    : admin                                               │
 │ 🔐 Contraseña       : $PASSWORD                                           │
 │ 📦 Namespace        : $NAMESPACE                                          │
