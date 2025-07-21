@@ -1,3 +1,4 @@
+# argocd-values.yaml
 server:
   config:
     url: https://localhost:32443
