@@ -1,16 +1,25 @@
 #!/usr/bin/env bash
+# ──────────────────────────────────────────────────────────────────────────────
+# deploy_argocd_render.sh
+#   ▸ Despliega ArgoCD en K3d / K3s con Helm + configuración personalizada
+#   ▸ Asigna puertos fijos y muestra credenciales al finalizar
+# ──────────────────────────────────────────────────────────────────────────────
 set -euo pipefail
 
+# ═══ 0. CONFIG Y VALIDACIÓN ═══════════════════════════════════════════════════
 NAMESPACE="argocd"
 RELEASE="argocd"
 CHART="argo/argo-cd"
 VALUES_FILE="$HOME/projects/argocd-bootstrap_local_k3d/argocd-values.yaml"
-
 NODEPORT_HTTP=32080
 NODEPORT_HTTPS=32443
-LOCAL_PORT=9090  # Puerto fijo para port-forward
+LOCAL_PORT=9090  # Para port-forward manual (opcional)
 
-# 1. Verificar si el release ya está instalado
+for bin in helm kubectl base64; do
+  command -v "$bin" >/dev/null || { echo "❌ Falta $bin"; exit 1; }
+done
+
+# ═══ 1. LIMPIEZA PREVIA ══════════════════════════════════════════════════════
 if helm status "$RELEASE" -n "$NAMESPACE" &>/dev/null; then
   echo "🗑️  Desinstalando release existente..."
   helm uninstall "$RELEASE" -n "$NAMESPACE"
@@ -20,16 +29,15 @@ if helm status "$RELEASE" -n "$NAMESPACE" &>/dev/null; then
   sleep 5
 fi
 
-# 2. Crear namespace
+# ═══ 2. CREACIÓN DEL NAMESPACE ════════════════════════════════════════════════
 echo "🚀 Creando namespace '$NAMESPACE'..."
 kubectl create namespace "$NAMESPACE"
 
-# 3. Agregar repo y actualizar charts
+# ═══ 3. REPO + INSTALACIÓN HELM ══════════════════════════════════════════════
 echo "📦 Añadiendo repo de ArgoCD Helm..."
-helm repo add argo https://argoproj.github.io/argo-helm
-helm repo update
+helm repo add argo https://argoproj.github.io/argo-helm >/dev/null 2>&1 || true
+helm repo update >/dev/null
 
-# 4. Desplegar con Helm + valores personalizados
 echo "🚀 Instalando ArgoCD con Helm..."
 helm upgrade --install "$RELEASE" "$CHART" \
   -n "$NAMESPACE" \
@@ -38,32 +46,25 @@ helm upgrade --install "$RELEASE" "$CHART" \
   --set server.service.nodePortHttp=$NODEPORT_HTTP \
   --set server.service.nodePortHttps=$NODEPORT_HTTPS
 
-# 5. Esperar pods
+# ═══ 4. ESPERA DE LOS PODS ═══════════════════════════════════════════════════
 echo "⏳ Esperando a que ArgoCD esté listo..."
-sleep 10
 kubectl rollout status deployment/argocd-server -n "$NAMESPACE" --timeout=5m
 
-# 6. Mostrar datos de acceso
+# ═══ 5. CREDENCIALES Y ACCESO ════════════════════════════════════════════════
 PASSWORD=$(kubectl -n "$NAMESPACE" get secret argocd-initial-admin-secret \
   -o jsonpath="{.data.password}" | base64 -d)
 
-echo "✅ ArgoCD desplegado correctamente."
-
 cat <<EOF
 
-🌐 Acceso a ArgoCD UI:
-    - NodePort:
-        http://localhost:$NODEPORT_HTTP
-        https://localhost:$NODEPORT_HTTPS
-
-    - Port-Forward (manual, si prefieres):
-        kubectl port-forward -n $NAMESPACE svc/$RELEASE $LOCAL_PORT:443
-        https://localhost:$LOCAL_PORT
-
-👤 Usuario: admin
-🔐 Contraseña: $PASSWORD
-
-📦 Namespace: $NAMESPACE
-🛡️  Helm release: $RELEASE
+╭─────────────────────────────  ArgoCD Listo  ─────────────────────────────╮
+│ 🌐 URL NodePort HTTP : http://localhost:$NODEPORT_HTTP                   │
+│ 🌐 URL NodePort HTTPS: https://localhost:$NODEPORT_HTTPS                  │
+│ 🔗 Port-forward     : kubectl port-forward -n $NAMESPACE svc/$RELEASE \
+│                       $LOCAL_PORT:443                                    │
+│ 👤 Usuario admin    : admin                                               │
+│ 🔐 Contraseña       : $PASSWORD                                           │
+│ 📦 Namespace        : $NAMESPACE                                          │
+│ 🛡️  Helm release     : $RELEASE                                            │
+╰──────────────────────────────────────────────────────────────────────────╯
 
 EOF
